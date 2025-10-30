@@ -8,7 +8,7 @@
 
 #define REG_BFPCTRL 0x0c
 #define REG_TXRTSCTRL 0x0d
-
+#define REG_CANSTAT 0x0e
 #define REG_CANCTRL 0x0f
 
 #define REG_CNF3 0x28
@@ -18,6 +18,15 @@
 #define REG_CANINTE 0x2b
 #define REG_CANINTF 0x2c
 
+#define REG_TEC 0x1c
+#define REG_REC 0x1D
+#define REG_EFLG 0x2d
+
+#define FLAG_MERRE 0x80
+#define FLAG_WAKIE 0x40
+#define FLAG_ERRIE 0x20
+#define FLAG_RX1OVR 0x80
+#define FLAG_RX0OVR 0x40
 #define FLAG_RXnIE(n) (0x01 << n)
 #define FLAG_RXnIF(n) (0x01 << n)
 #define FLAG_TXnIF(n) (0x04 << n)
@@ -134,7 +143,7 @@ int Adafruit_MCP2515::begin(long baudRate) {
   writeRegister(REG_CNF2, cnf[1]);
   writeRegister(REG_CNF3, cnf[2]);
 
-  writeRegister(REG_CANINTE, FLAG_RXnIE(1) | FLAG_RXnIE(0));
+  writeRegister(REG_CANINTE, FLAG_RXnIE(1) | FLAG_RXnIE(0) | FLAG_MERRE | FLAG_ERRIE);
   writeRegister(REG_BFPCTRL, 0x00);
   writeRegister(REG_TXRTSCTRL, 0x00);
   writeRegister(REG_RXBnCTRL(0), FLAG_RXM1 | FLAG_RXM0);
@@ -209,13 +218,32 @@ int Adafruit_MCP2515::endPacket() {
 
 int Adafruit_MCP2515::parsePacket() {
   int n;
-
+  int dataN = 0;
   uint8_t intf = readRegister(REG_CANINTF);
+  uint8_t errf;
 
   if (intf & FLAG_RXnIF(0)) {
     n = 0;
   } else if (intf & FLAG_RXnIF(1)) {
     n = 1;
+  } else if (intf & FLAG_MERRE) {
+    _rxDlc = -2;
+    modifyRegister(REG_CANINTF, FLAG_MERRE, 0x00);
+    return _rxDlc;
+  } else if (intf & FLAG_ERRIE) {
+    _rxDlc = -3;
+    _rxIndex = int(readRegister(REG_REC));
+    _rxLength = int(readRegister(REG_TEC));
+    errf = readRegister(REG_EFLG);
+    while (dataN < 8) {
+      _rxData[dataN] = errf[dataN];
+      dataN++;
+    }
+    if (errf | FLAG_RX0OVR | FLAG_RX1OVR) {
+      modifyRegister(REG_EFLG, (FLAG_RX0OVR | FLAG_RX1OVR), 0x00);
+    }
+    modifyRegister(REG_CANINTF, FLAG_ERRIE, 0x00);
+    return _rxDlc;
   } else {
     _rxId = -1;
     _rxExtended = false;
