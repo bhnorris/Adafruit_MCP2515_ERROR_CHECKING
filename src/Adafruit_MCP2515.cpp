@@ -236,10 +236,7 @@ int Adafruit_MCP2515::parsePacket() {
     _rxId = long((readRegister(REG_REC) << 8) | readRegister(REG_TEC));
     
     errf = readRegister(REG_EFLG);
-    while (dataN < 8) {
-      _rxData[dataN] = errf[dataN];
-      dataN++;
-    }
+    _rxData[0] = errf;
     if (errf | FLAG_RX0OVR | FLAG_RX1OVR) {
       modifyRegister(REG_EFLG, (FLAG_RX0OVR | FLAG_RX1OVR), 0x00);
     }
